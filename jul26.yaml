@@ -1,0 +1,121 @@
+# Board: Seeed Studio XIAO ESP32S3
+# Definition: definitions/boards/seeed_xiao_esp32s3/manifest.yaml
+
+esphome:
+  name: jul26
+  friendly_name: Jul26
+
+esp32:
+  board: seeed_xiao_esp32s3
+  variant: esp32s3
+  framework: 
+    type: esp-idf
+
+logger:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: Jul26 Fallback Hotspot
+    password: "k6F1NaxMMIMo"
+
+captive_portal:
+
+web_server:
+  port: 80
+  version: 3
+
+# SPI-buss for DotStar-stripen
+spi:
+  clk_pin: GPIO7        # D8
+  mosi_pin: GPIO9       # D10
+  
+output:
+  # LED 1: digital utgang (av/på)
+  - platform: gpio
+    id: led1_out
+    pin: GPIO1          # D0
+
+  # LED 2: PWM-utgang (dimbar)
+  - platform: ledc
+    id: led2_pwm
+    pin: GPIO2          # D1
+    frequency: 1000Hz
+
+  - platform: template
+    id: stripe_output
+    type: float
+    write_action:
+      - lambda: |-
+          auto call = id(stripe_raw).make_call();
+          if (state > 0.0f) {
+            call.set_state(true);
+            call.set_color_mode(ColorMode::RGB);
+            call.set_rgb(1.0f, 1.0f, 1.0f);
+            call.set_brightness(state);
+          } else {
+            call.set_state(false);
+          }
+          call.set_transition_length(0);
+          call.perform();
+
+light:
+  - platform: binary
+    name: "LED 1"
+    id: led1
+    output: led1_out
+    restore_mode: ALWAYS_OFF
+
+  - platform: monochromatic
+    name: "LED 2 (dimbar)"
+    id: led2
+    output: led2_pwm
+    gamma_correct: 2.8
+    default_transition_length: 0.5s
+    restore_mode: ALWAYS_OFF
+
+  - platform: monochromatic
+    name: "LED-stripe"
+    id: stripe
+    output: stripe_output
+    gamma_correct: 2.8
+    default_transition_length: 0.5s
+    restore_mode: ALWAYS_OFF
+
+  - platform: spi_led_strip
+    id: stripe_raw
+    num_leds: 1
+    data_rate: 1MHz
+    internal: true
+    gamma_correct: 1.0
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+    effects:
+      - addressable_scan:
+          name: "Scan"
+          move_interval: 70ms
+          scan_width: 1
+
+
+button:
+  - platform: template
+    name: "Start"
+    on_press:
+      # Slå på stripen med full lysstyrke hvis den er av
+      - if:
+          condition:
+            light.is_off: stripe
+          then:
+            - light.turn_on:
+                id: stripe
+                brightness: 100%
+                transition_length: 0s
+      # Start scan-effekten
+      - light.turn_on:
+          id: stripe_raw
+          effect: "Scan"
+          
